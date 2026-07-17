@@ -4,9 +4,9 @@ Summary of final results from each calibration run in
 [`zoff_nsew_log.csv`](zoff_nsew_log.csv) — one row per tool per run, pulled
 from that file's `C`/`CENTER` (final result) rows. T0 is the reference
 tool (`Z offset` is always blank for T0 since every other tool's offset is
-computed relative to it). The full raw data — every individual N/S/E/W
-touch, per-side averages, and these final results — is in the CSV; this
-table is just the headline numbers.
+computed relative to it). This table is just the headline numbers — for
+every individual N/S/E/W touch and the per-side averages behind each of
+these results, see [RESULTS-FULL.md](RESULTS-FULL.md).
 
 | Timestamp | Tool | Center X | Center Y | Z result (mm) | Z offset (mm) |
 |---|---|---|---|---|---|
