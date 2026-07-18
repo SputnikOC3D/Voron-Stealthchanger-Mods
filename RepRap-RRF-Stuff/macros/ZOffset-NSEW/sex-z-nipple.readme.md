@@ -1,5 +1,11 @@
 # Z-Tool-Offsets-Sex-Z-Nipple-RRF.g
 
+<p align="center">
+  <img src="images/probe-callout-diagram.png" alt="SEX-Z-Nipple probe design callout diagram" width="32%">
+  <img src="images/probe-mount-closeup.jpg" alt="SEX-Z-Nipple probe mounted under the bed" width="32%">
+  <img src="images/toolhead-front-view.png" alt="Toolhead positioned over the SEX-Z-Nipple probe pin" width="32%">
+</p>
+
 Per-tool Z-offset calibration for the Voron 2.4 StealthChanger, using
 multi-directional (N/S/E/W) probing against the "SEX-Z-Nipple" pin probe.
 Ported from `viesturz/klipper-toolchanger`'s `tools_calibrate.py`
