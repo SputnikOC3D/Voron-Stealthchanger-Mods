@@ -318,6 +318,10 @@ Don't over-engineer toward steps 2/3 before step 1 is validated.
   field** — those aren't in his real config at all. His actual
   `calibrate-offsets.cfg` is a symlink outside the tracked repo, contents
   not fetchable from GitHub.
+- [printables.com/model/1073728](https://www.printables.com/model/1073728-shorter-multi-tool-calibration-probe-with-4mm-dowe) —
+  Jared Wellman's printable housing/mount for the pin probe itself
+  ("Shorter Multi-Tool Calibration Probe with 4mm Dowel"). This is the
+  physical part shown in the photos at the top of this doc.
 - `docs.duet3d.com/en/User_manual/Reference/Gcodes` — the RRF GCode
   dictionary (JS-rendered, needs a real browser, not `WebFetch`). Every
   probe-command claim in this macro is verified against this, not forum
