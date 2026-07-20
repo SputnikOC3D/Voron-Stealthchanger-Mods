@@ -35,9 +35,13 @@ var nsew_drop_z 	= 0.25		; mm below pin's measured top for the first N/S/E/W tou
 var lift_z 			= 4.0		; Z clearance when traversing between N/S/E/W touches
 var final_lift_z 	= 4.0		; park height above final measured Z once a tool's routine is done
 var traverse_speed 	= 1200		; mm/min for non-probing X/Y moves (=20mm/s)
-var probe_samples 	= 5			; touches taken and averaged per side/center, always in full
+var retract_speed 	= 800		; mm/min for the short retract-away move on retries only (=13.3mm/s) - traverse_speed was causing a visible bounce/rebound at the short 4-5mm retract stop, added 2026-07-18
+var probe_samples 	= 5			; touches taken and averaged for the VERTICAL center touch only (the recorded Z offset)
+var nsew_samples 	= 3			; touches taken and averaged for HORIZONTAL N/S/E/W touches only (centering, not the final Z)
 var probe_retract 	= 2			; mm retract for vertical G30 center-touch retries only
 var nsew_retract 	= 4			; mm retract for horizontal G38.2 touch retries only
+var spread_y_minus 	= 2.5		; Y- side only: real hard mechanical Y minimum is Y-2 (probe_y=1), shared spread(4) doesn't fit here
+var retract_y_minus = 2			; Y- side only: retract moves further negative on this side, same Y-2 constraint applies
 ; ------------------------
 
 if !fileexists("0:/sys/zoff_nsew_log.csv")
@@ -111,7 +115,7 @@ while var.nsew_miss && var.nsew_attempt <= var.nsew_max_attempts
     G53 G1 Z{var.rough_z - var.nsew_depth} F600
     set var.sample_sum = 0
     set var.sample_count = 0
-    while var.sample_count < var.probe_samples
+    while var.sample_count < var.nsew_samples
         G38.2 K1 X{var.probe_x + var.spread} F240
         if result >= 2
             ; position tells apart the two failure modes: closer to this
@@ -131,10 +135,10 @@ while var.nsew_miss && var.nsew_attempt <= var.nsew_max_attempts
         echo >>"0:/sys/zoff_nsew_log.csv" var.run_time ^ "," ^ "T0" ^ "," ^ "TX-" ^ "," ^ var.sample_reading ^ "," ^ var.nsew_attempt ^ "," ^ (var.sample_count + 1) ^ "," ^ var.nsew_depth ^ ",,,,,,"
         set var.sample_sum = var.sample_sum + var.sample_reading
         set var.sample_count = var.sample_count + 1
-        if var.sample_count < var.probe_samples
+        if var.sample_count < var.nsew_samples
             ; retract clear of the switch, then return to this touch's start
             ; (unmarked repeat elsewhere in this file - same pattern every time)
-            G53 G1 X{move.axes[0].userPosition - var.nsew_retract} F{var.traverse_speed}
+            G53 G1 X{move.axes[0].userPosition - var.nsew_retract} F{var.retract_speed}
             G53 G1 X{var.probe_x - var.spread} Y{var.probe_y} F{var.traverse_speed}
     if !var.nsew_miss
         set var.x_minus = var.sample_sum / var.sample_count
@@ -154,7 +158,7 @@ G53 G1 X{var.probe_x + var.spread} Y{var.probe_y} F{var.traverse_speed}
 G53 G1 Z{var.rough_z - var.nsew_depth} F600
 set var.sample_sum = 0
 set var.sample_count = 0
-while var.sample_count < var.probe_samples
+while var.sample_count < var.nsew_samples
     G38.2 K1 X{var.probe_x - var.spread} F240
     if result >= 2
         if abs(move.axes[0].userPosition - (var.probe_x + var.spread)) < abs(move.axes[0].userPosition - (var.probe_x - var.spread))
@@ -167,8 +171,8 @@ while var.sample_count < var.probe_samples
     echo >>"0:/sys/zoff_nsew_log.csv" var.run_time ^ "," ^ "T0" ^ "," ^ "TX+" ^ "," ^ var.sample_reading ^ "," ^ 0 ^ "," ^ (var.sample_count + 1) ^ "," ^ var.nsew_depth ^ ",,,,,,"
     set var.sample_sum = var.sample_sum + var.sample_reading
     set var.sample_count = var.sample_count + 1
-    if var.sample_count < var.probe_samples
-        G53 G1 X{move.axes[0].userPosition + var.nsew_retract} F{var.traverse_speed}
+    if var.sample_count < var.nsew_samples
+        G53 G1 X{move.axes[0].userPosition + var.nsew_retract} F{var.retract_speed}
         G53 G1 X{var.probe_x + var.spread} Y{var.probe_y} F{var.traverse_speed}
 if !var.nsew_miss
     set var.x_plus = var.sample_sum / var.sample_count
@@ -185,7 +189,7 @@ if var.nsew_miss
         G53 G1 Z{var.rough_z - var.nsew_depth} F600
         set var.sample_sum = 0
         set var.sample_count = 0
-        while var.sample_count < var.probe_samples
+        while var.sample_count < var.nsew_samples
             G38.2 K1 X{var.probe_x - var.spread} F240
             if result >= 2
                 if abs(move.axes[0].userPosition - (var.probe_x + var.spread)) < abs(move.axes[0].userPosition - (var.probe_x - var.spread))
@@ -198,8 +202,8 @@ if var.nsew_miss
             echo >>"0:/sys/zoff_nsew_log.csv" var.run_time ^ "," ^ "T0" ^ "," ^ "TX+" ^ "," ^ var.sample_reading ^ "," ^ var.nsew_attempt ^ "," ^ (var.sample_count + 1) ^ "," ^ var.nsew_depth ^ ",,,,,,"
             set var.sample_sum = var.sample_sum + var.sample_reading
             set var.sample_count = var.sample_count + 1
-            if var.sample_count < var.probe_samples
-                G53 G1 X{move.axes[0].userPosition + var.nsew_retract} F{var.traverse_speed}
+            if var.sample_count < var.nsew_samples
+                G53 G1 X{move.axes[0].userPosition + var.nsew_retract} F{var.retract_speed}
                 G53 G1 X{var.probe_x + var.spread} Y{var.probe_y} F{var.traverse_speed}
         if !var.nsew_miss
             set var.x_plus = var.sample_sum / var.sample_count
@@ -219,14 +223,14 @@ while var.nsew_miss && var.nsew_attempt <= var.nsew_max_attempts
     set var.nsew_depth = var.nsew_drop_z * var.nsew_attempt
     M118 P0 S{"T0 Y- discovery attempt " ^ var.nsew_attempt ^ "/" ^ var.nsew_max_attempts ^ ", depth=" ^ var.nsew_depth ^ "mm"}
     G53 G1 Z{var.rough_z + var.lift_z} F2000
-    G53 G1 X{var.center_x} Y{var.probe_y - var.spread} F{var.traverse_speed}
+    G53 G1 X{var.center_x} Y{var.probe_y - var.spread_y_minus} F{var.traverse_speed}
     G53 G1 Z{var.rough_z - var.nsew_depth} F600
     set var.sample_sum = 0
     set var.sample_count = 0
-    while var.sample_count < var.probe_samples
-        G38.2 K1 Y{var.probe_y + var.spread} F240
+    while var.sample_count < var.nsew_samples
+        G38.2 K1 Y{var.probe_y + var.spread_y_minus} F240
         if result >= 2
-            if abs(move.axes[1].userPosition - (var.probe_y - var.spread)) < abs(move.axes[1].userPosition - (var.probe_y + var.spread))
+            if abs(move.axes[1].userPosition - (var.probe_y - var.spread_y_minus)) < abs(move.axes[1].userPosition - (var.probe_y + var.spread_y_minus))
                 G53 G1 Z{var.safe_z} F6000
                 abort "Calibration aborted: T0 Y- touch failed (probe already triggered at start) - see console."
             M118 P0 S{"T0 Y- MISS attempt " ^ var.nsew_attempt ^ " depth " ^ var.nsew_depth ^ "mm"}
@@ -236,9 +240,9 @@ while var.nsew_miss && var.nsew_attempt <= var.nsew_max_attempts
         echo >>"0:/sys/zoff_nsew_log.csv" var.run_time ^ "," ^ "T0" ^ "," ^ "TY-" ^ "," ^ var.sample_reading ^ "," ^ var.nsew_attempt ^ "," ^ (var.sample_count + 1) ^ "," ^ var.nsew_depth ^ ",,,,,,"
         set var.sample_sum = var.sample_sum + var.sample_reading
         set var.sample_count = var.sample_count + 1
-        if var.sample_count < var.probe_samples
-            G53 G1 Y{move.axes[1].userPosition - var.nsew_retract} F{var.traverse_speed}
-            G53 G1 X{var.center_x} Y{var.probe_y - var.spread} F{var.traverse_speed}
+        if var.sample_count < var.nsew_samples
+            G53 G1 Y{move.axes[1].userPosition - var.retract_y_minus} F{var.retract_speed}
+            G53 G1 X{var.center_x} Y{var.probe_y - var.spread_y_minus} F{var.traverse_speed}
     if !var.nsew_miss
         set var.y_minus = var.sample_sum / var.sample_count
         M118 P0 S{"T0 Y- done: " ^ var.y_minus ^ " (" ^ var.sample_count ^ "x, depth " ^ var.nsew_depth ^ "mm)"}
@@ -257,7 +261,7 @@ G53 G1 X{var.center_x} Y{var.probe_y + var.spread} F{var.traverse_speed}
 G53 G1 Z{var.rough_z - var.nsew_depth} F600
 set var.sample_sum = 0
 set var.sample_count = 0
-while var.sample_count < var.probe_samples
+while var.sample_count < var.nsew_samples
     G38.2 K1 Y{var.probe_y - var.spread} F240
     if result >= 2
         if abs(move.axes[1].userPosition - (var.probe_y + var.spread)) < abs(move.axes[1].userPosition - (var.probe_y - var.spread))
@@ -270,8 +274,8 @@ while var.sample_count < var.probe_samples
     echo >>"0:/sys/zoff_nsew_log.csv" var.run_time ^ "," ^ "T0" ^ "," ^ "TY+" ^ "," ^ var.sample_reading ^ "," ^ 0 ^ "," ^ (var.sample_count + 1) ^ "," ^ var.nsew_depth ^ ",,,,,,"
     set var.sample_sum = var.sample_sum + var.sample_reading
     set var.sample_count = var.sample_count + 1
-    if var.sample_count < var.probe_samples
-        G53 G1 Y{move.axes[1].userPosition + var.nsew_retract} F{var.traverse_speed}
+    if var.sample_count < var.nsew_samples
+        G53 G1 Y{move.axes[1].userPosition + var.nsew_retract} F{var.retract_speed}
         G53 G1 X{var.center_x} Y{var.probe_y + var.spread} F{var.traverse_speed}
 if !var.nsew_miss
     set var.y_plus = var.sample_sum / var.sample_count
@@ -288,7 +292,7 @@ if var.nsew_miss
         G53 G1 Z{var.rough_z - var.nsew_depth} F600
         set var.sample_sum = 0
         set var.sample_count = 0
-        while var.sample_count < var.probe_samples
+        while var.sample_count < var.nsew_samples
             G38.2 K1 Y{var.probe_y - var.spread} F240
             if result >= 2
                 if abs(move.axes[1].userPosition - (var.probe_y + var.spread)) < abs(move.axes[1].userPosition - (var.probe_y - var.spread))
@@ -301,8 +305,8 @@ if var.nsew_miss
             echo >>"0:/sys/zoff_nsew_log.csv" var.run_time ^ "," ^ "T0" ^ "," ^ "TY+" ^ "," ^ var.sample_reading ^ "," ^ var.nsew_attempt ^ "," ^ (var.sample_count + 1) ^ "," ^ var.nsew_depth ^ ",,,,,,"
             set var.sample_sum = var.sample_sum + var.sample_reading
             set var.sample_count = var.sample_count + 1
-            if var.sample_count < var.probe_samples
-                G53 G1 Y{move.axes[1].userPosition + var.nsew_retract} F{var.traverse_speed}
+            if var.sample_count < var.nsew_samples
+                G53 G1 Y{move.axes[1].userPosition + var.nsew_retract} F{var.retract_speed}
                 G53 G1 X{var.center_x} Y{var.probe_y + var.spread} F{var.traverse_speed}
         if !var.nsew_miss
             set var.y_plus = var.sample_sum / var.sample_count
@@ -371,7 +375,7 @@ while var.nsew_miss && var.nsew_attempt <= var.nsew_max_attempts
     G53 G1 Z{var.rough_z - var.nsew_depth} F600
     set var.sample_sum = 0
     set var.sample_count = 0
-    while var.sample_count < var.probe_samples
+    while var.sample_count < var.nsew_samples
         G38.2 K1 X{var.probe_x + var.spread} F240
         if result >= 2
             if abs(move.axes[0].userPosition - (var.probe_x - var.spread)) < abs(move.axes[0].userPosition - (var.probe_x + var.spread))
@@ -384,8 +388,8 @@ while var.nsew_miss && var.nsew_attempt <= var.nsew_max_attempts
         echo >>"0:/sys/zoff_nsew_log.csv" var.run_time ^ "," ^ "T1" ^ "," ^ "TX-" ^ "," ^ var.sample_reading ^ "," ^ var.nsew_attempt ^ "," ^ (var.sample_count + 1) ^ "," ^ var.nsew_depth ^ ",,,,,,"
         set var.sample_sum = var.sample_sum + var.sample_reading
         set var.sample_count = var.sample_count + 1
-        if var.sample_count < var.probe_samples
-            G53 G1 X{move.axes[0].userPosition - var.nsew_retract} F{var.traverse_speed}
+        if var.sample_count < var.nsew_samples
+            G53 G1 X{move.axes[0].userPosition - var.nsew_retract} F{var.retract_speed}
             G53 G1 X{var.probe_x - var.spread} Y{var.probe_y} F{var.traverse_speed}
     if !var.nsew_miss
         set var.x_minus = var.sample_sum / var.sample_count
@@ -405,7 +409,7 @@ G53 G1 X{var.probe_x + var.spread} Y{var.probe_y} F{var.traverse_speed}
 G53 G1 Z{var.rough_z - var.nsew_depth} F600
 set var.sample_sum = 0
 set var.sample_count = 0
-while var.sample_count < var.probe_samples
+while var.sample_count < var.nsew_samples
     G38.2 K1 X{var.probe_x - var.spread} F240
     if result >= 2
         if abs(move.axes[0].userPosition - (var.probe_x + var.spread)) < abs(move.axes[0].userPosition - (var.probe_x - var.spread))
@@ -418,8 +422,8 @@ while var.sample_count < var.probe_samples
     echo >>"0:/sys/zoff_nsew_log.csv" var.run_time ^ "," ^ "T1" ^ "," ^ "TX+" ^ "," ^ var.sample_reading ^ "," ^ 0 ^ "," ^ (var.sample_count + 1) ^ "," ^ var.nsew_depth ^ ",,,,,,"
     set var.sample_sum = var.sample_sum + var.sample_reading
     set var.sample_count = var.sample_count + 1
-    if var.sample_count < var.probe_samples
-        G53 G1 X{move.axes[0].userPosition + var.nsew_retract} F{var.traverse_speed}
+    if var.sample_count < var.nsew_samples
+        G53 G1 X{move.axes[0].userPosition + var.nsew_retract} F{var.retract_speed}
         G53 G1 X{var.probe_x + var.spread} Y{var.probe_y} F{var.traverse_speed}
 if !var.nsew_miss
     set var.x_plus = var.sample_sum / var.sample_count
@@ -436,7 +440,7 @@ if var.nsew_miss
         G53 G1 Z{var.rough_z - var.nsew_depth} F600
         set var.sample_sum = 0
         set var.sample_count = 0
-        while var.sample_count < var.probe_samples
+        while var.sample_count < var.nsew_samples
             G38.2 K1 X{var.probe_x - var.spread} F240
             if result >= 2
                 if abs(move.axes[0].userPosition - (var.probe_x + var.spread)) < abs(move.axes[0].userPosition - (var.probe_x - var.spread))
@@ -449,8 +453,8 @@ if var.nsew_miss
             echo >>"0:/sys/zoff_nsew_log.csv" var.run_time ^ "," ^ "T1" ^ "," ^ "TX+" ^ "," ^ var.sample_reading ^ "," ^ var.nsew_attempt ^ "," ^ (var.sample_count + 1) ^ "," ^ var.nsew_depth ^ ",,,,,,"
             set var.sample_sum = var.sample_sum + var.sample_reading
             set var.sample_count = var.sample_count + 1
-            if var.sample_count < var.probe_samples
-                G53 G1 X{move.axes[0].userPosition + var.nsew_retract} F{var.traverse_speed}
+            if var.sample_count < var.nsew_samples
+                G53 G1 X{move.axes[0].userPosition + var.nsew_retract} F{var.retract_speed}
                 G53 G1 X{var.probe_x + var.spread} Y{var.probe_y} F{var.traverse_speed}
         if !var.nsew_miss
             set var.x_plus = var.sample_sum / var.sample_count
@@ -470,14 +474,14 @@ while var.nsew_miss && var.nsew_attempt <= var.nsew_max_attempts
     set var.nsew_depth = var.nsew_drop_z * var.nsew_attempt
     M118 P0 S{"T1 Y- discovery attempt " ^ var.nsew_attempt ^ "/" ^ var.nsew_max_attempts ^ ", depth=" ^ var.nsew_depth ^ "mm"}
     G53 G1 Z{var.rough_z + var.lift_z} F2000
-    G53 G1 X{var.center_x} Y{var.probe_y - var.spread} F{var.traverse_speed}
+    G53 G1 X{var.center_x} Y{var.probe_y - var.spread_y_minus} F{var.traverse_speed}
     G53 G1 Z{var.rough_z - var.nsew_depth} F600
     set var.sample_sum = 0
     set var.sample_count = 0
-    while var.sample_count < var.probe_samples
-        G38.2 K1 Y{var.probe_y + var.spread} F240
+    while var.sample_count < var.nsew_samples
+        G38.2 K1 Y{var.probe_y + var.spread_y_minus} F240
         if result >= 2
-            if abs(move.axes[1].userPosition - (var.probe_y - var.spread)) < abs(move.axes[1].userPosition - (var.probe_y + var.spread))
+            if abs(move.axes[1].userPosition - (var.probe_y - var.spread_y_minus)) < abs(move.axes[1].userPosition - (var.probe_y + var.spread_y_minus))
                 G53 G1 Z{var.safe_z} F6000
                 abort "Calibration aborted: T1 Y- touch failed (probe already triggered at start) - see console."
             M118 P0 S{"T1 Y- MISS attempt " ^ var.nsew_attempt ^ " depth " ^ var.nsew_depth ^ "mm"}
@@ -487,9 +491,9 @@ while var.nsew_miss && var.nsew_attempt <= var.nsew_max_attempts
         echo >>"0:/sys/zoff_nsew_log.csv" var.run_time ^ "," ^ "T1" ^ "," ^ "TY-" ^ "," ^ var.sample_reading ^ "," ^ var.nsew_attempt ^ "," ^ (var.sample_count + 1) ^ "," ^ var.nsew_depth ^ ",,,,,,"
         set var.sample_sum = var.sample_sum + var.sample_reading
         set var.sample_count = var.sample_count + 1
-        if var.sample_count < var.probe_samples
-            G53 G1 Y{move.axes[1].userPosition - var.nsew_retract} F{var.traverse_speed}
-            G53 G1 X{var.center_x} Y{var.probe_y - var.spread} F{var.traverse_speed}
+        if var.sample_count < var.nsew_samples
+            G53 G1 Y{move.axes[1].userPosition - var.retract_y_minus} F{var.retract_speed}
+            G53 G1 X{var.center_x} Y{var.probe_y - var.spread_y_minus} F{var.traverse_speed}
     if !var.nsew_miss
         set var.y_minus = var.sample_sum / var.sample_count
         M118 P0 S{"T1 Y- done: " ^ var.y_minus ^ " (" ^ var.sample_count ^ "x, depth " ^ var.nsew_depth ^ "mm)"}
@@ -508,7 +512,7 @@ G53 G1 X{var.center_x} Y{var.probe_y + var.spread} F{var.traverse_speed}
 G53 G1 Z{var.rough_z - var.nsew_depth} F600
 set var.sample_sum = 0
 set var.sample_count = 0
-while var.sample_count < var.probe_samples
+while var.sample_count < var.nsew_samples
     G38.2 K1 Y{var.probe_y - var.spread} F240
     if result >= 2
         if abs(move.axes[1].userPosition - (var.probe_y + var.spread)) < abs(move.axes[1].userPosition - (var.probe_y - var.spread))
@@ -521,8 +525,8 @@ while var.sample_count < var.probe_samples
     echo >>"0:/sys/zoff_nsew_log.csv" var.run_time ^ "," ^ "T1" ^ "," ^ "TY+" ^ "," ^ var.sample_reading ^ "," ^ 0 ^ "," ^ (var.sample_count + 1) ^ "," ^ var.nsew_depth ^ ",,,,,,"
     set var.sample_sum = var.sample_sum + var.sample_reading
     set var.sample_count = var.sample_count + 1
-    if var.sample_count < var.probe_samples
-        G53 G1 Y{move.axes[1].userPosition + var.nsew_retract} F{var.traverse_speed}
+    if var.sample_count < var.nsew_samples
+        G53 G1 Y{move.axes[1].userPosition + var.nsew_retract} F{var.retract_speed}
         G53 G1 X{var.center_x} Y{var.probe_y + var.spread} F{var.traverse_speed}
 if !var.nsew_miss
     set var.y_plus = var.sample_sum / var.sample_count
@@ -539,7 +543,7 @@ if var.nsew_miss
         G53 G1 Z{var.rough_z - var.nsew_depth} F600
         set var.sample_sum = 0
         set var.sample_count = 0
-        while var.sample_count < var.probe_samples
+        while var.sample_count < var.nsew_samples
             G38.2 K1 Y{var.probe_y - var.spread} F240
             if result >= 2
                 if abs(move.axes[1].userPosition - (var.probe_y + var.spread)) < abs(move.axes[1].userPosition - (var.probe_y - var.spread))
@@ -552,8 +556,8 @@ if var.nsew_miss
             echo >>"0:/sys/zoff_nsew_log.csv" var.run_time ^ "," ^ "T1" ^ "," ^ "TY+" ^ "," ^ var.sample_reading ^ "," ^ var.nsew_attempt ^ "," ^ (var.sample_count + 1) ^ "," ^ var.nsew_depth ^ ",,,,,,"
             set var.sample_sum = var.sample_sum + var.sample_reading
             set var.sample_count = var.sample_count + 1
-            if var.sample_count < var.probe_samples
-                G53 G1 Y{move.axes[1].userPosition + var.nsew_retract} F{var.traverse_speed}
+            if var.sample_count < var.nsew_samples
+                G53 G1 Y{move.axes[1].userPosition + var.nsew_retract} F{var.retract_speed}
                 G53 G1 X{var.center_x} Y{var.probe_y + var.spread} F{var.traverse_speed}
         if !var.nsew_miss
             set var.y_plus = var.sample_sum / var.sample_count
@@ -586,10 +590,18 @@ M118 P0 S{"T1 CENTER done: " ^ var.t1_z ^ " (" ^ var.sample_count ^ "x)"}
 
 G53 G1 Z{var.final_lift_z + var.t1_z} F2000
 
+; CSV column intentionally still logs the raw (t1_z - master_z) measurement,
+; not the sign-corrected value actually applied below - kept consistent
+; with historical log rows for repeatability comparison. See
+; sex-z-nipple.readme.md for the sign-fix rationale (2026-07-18).
 echo >>"0:/sys/zoff_nsew_log.csv" var.run_time ^ "," ^ "T1" ^ "," ^ "C,,,,," ^ var.center_x ^ "," ^ var.center_y ^ "," ^ var.t1_z ^ "," ^ (var.t1_z - var.master_z)
 
-G10 P1 Z{var.t1_z - var.master_z}
-M118 P0 S{"T1 Z-offset applied: " ^ (var.t1_z - var.master_z)}
+; G10 SUBTRACTS the stored offset from commanded Z (confirmed against the
+; real G10 docs, 2026-07-18) - so the correct value to store is
+; master_z - t1_z, NOT t1_z - master_z. Fixed 2026-07-18 after tracing a
+; real live crash (T2 dragging into the bed) to this exact sign inversion.
+G10 P1 Z{var.master_z - var.t1_z}
+M118 P0 S{"T1 Z-offset applied: " ^ (var.master_z - var.t1_z)}
 M118 P0 S{"Center X=" ^ var.center_x ^ " Y=" ^ var.center_y ^ " (ref only, X/Y=DuetToolAlign)"}
 
 M291 P{"T1 Z-offset applied: " ^ (var.t1_z - var.master_z) ^ ". Review the result above, then click OK to continue to T2."} R"Calibrate_ZOff_Tool_NSEW - T1 done" S2
@@ -622,7 +634,7 @@ while var.nsew_miss && var.nsew_attempt <= var.nsew_max_attempts
     G53 G1 Z{var.rough_z - var.nsew_depth} F600
     set var.sample_sum = 0
     set var.sample_count = 0
-    while var.sample_count < var.probe_samples
+    while var.sample_count < var.nsew_samples
         G38.2 K1 X{var.probe_x + var.spread} F240
         if result >= 2
             if abs(move.axes[0].userPosition - (var.probe_x - var.spread)) < abs(move.axes[0].userPosition - (var.probe_x + var.spread))
@@ -635,8 +647,8 @@ while var.nsew_miss && var.nsew_attempt <= var.nsew_max_attempts
         echo >>"0:/sys/zoff_nsew_log.csv" var.run_time ^ "," ^ "T2" ^ "," ^ "TX-" ^ "," ^ var.sample_reading ^ "," ^ var.nsew_attempt ^ "," ^ (var.sample_count + 1) ^ "," ^ var.nsew_depth ^ ",,,,,,"
         set var.sample_sum = var.sample_sum + var.sample_reading
         set var.sample_count = var.sample_count + 1
-        if var.sample_count < var.probe_samples
-            G53 G1 X{move.axes[0].userPosition - var.nsew_retract} F{var.traverse_speed}
+        if var.sample_count < var.nsew_samples
+            G53 G1 X{move.axes[0].userPosition - var.nsew_retract} F{var.retract_speed}
             G53 G1 X{var.probe_x - var.spread} Y{var.probe_y} F{var.traverse_speed}
     if !var.nsew_miss
         set var.x_minus = var.sample_sum / var.sample_count
@@ -656,7 +668,7 @@ G53 G1 X{var.probe_x + var.spread} Y{var.probe_y} F{var.traverse_speed}
 G53 G1 Z{var.rough_z - var.nsew_depth} F600
 set var.sample_sum = 0
 set var.sample_count = 0
-while var.sample_count < var.probe_samples
+while var.sample_count < var.nsew_samples
     G38.2 K1 X{var.probe_x - var.spread} F240
     if result >= 2
         if abs(move.axes[0].userPosition - (var.probe_x + var.spread)) < abs(move.axes[0].userPosition - (var.probe_x - var.spread))
@@ -669,8 +681,8 @@ while var.sample_count < var.probe_samples
     echo >>"0:/sys/zoff_nsew_log.csv" var.run_time ^ "," ^ "T2" ^ "," ^ "TX+" ^ "," ^ var.sample_reading ^ "," ^ 0 ^ "," ^ (var.sample_count + 1) ^ "," ^ var.nsew_depth ^ ",,,,,,"
     set var.sample_sum = var.sample_sum + var.sample_reading
     set var.sample_count = var.sample_count + 1
-    if var.sample_count < var.probe_samples
-        G53 G1 X{move.axes[0].userPosition + var.nsew_retract} F{var.traverse_speed}
+    if var.sample_count < var.nsew_samples
+        G53 G1 X{move.axes[0].userPosition + var.nsew_retract} F{var.retract_speed}
         G53 G1 X{var.probe_x + var.spread} Y{var.probe_y} F{var.traverse_speed}
 if !var.nsew_miss
     set var.x_plus = var.sample_sum / var.sample_count
@@ -687,7 +699,7 @@ if var.nsew_miss
         G53 G1 Z{var.rough_z - var.nsew_depth} F600
         set var.sample_sum = 0
         set var.sample_count = 0
-        while var.sample_count < var.probe_samples
+        while var.sample_count < var.nsew_samples
             G38.2 K1 X{var.probe_x - var.spread} F240
             if result >= 2
                 if abs(move.axes[0].userPosition - (var.probe_x + var.spread)) < abs(move.axes[0].userPosition - (var.probe_x - var.spread))
@@ -700,8 +712,8 @@ if var.nsew_miss
             echo >>"0:/sys/zoff_nsew_log.csv" var.run_time ^ "," ^ "T2" ^ "," ^ "TX+" ^ "," ^ var.sample_reading ^ "," ^ var.nsew_attempt ^ "," ^ (var.sample_count + 1) ^ "," ^ var.nsew_depth ^ ",,,,,,"
             set var.sample_sum = var.sample_sum + var.sample_reading
             set var.sample_count = var.sample_count + 1
-            if var.sample_count < var.probe_samples
-                G53 G1 X{move.axes[0].userPosition + var.nsew_retract} F{var.traverse_speed}
+            if var.sample_count < var.nsew_samples
+                G53 G1 X{move.axes[0].userPosition + var.nsew_retract} F{var.retract_speed}
                 G53 G1 X{var.probe_x + var.spread} Y{var.probe_y} F{var.traverse_speed}
         if !var.nsew_miss
             set var.x_plus = var.sample_sum / var.sample_count
@@ -721,14 +733,14 @@ while var.nsew_miss && var.nsew_attempt <= var.nsew_max_attempts
     set var.nsew_depth = var.nsew_drop_z * var.nsew_attempt
     M118 P0 S{"T2 Y- discovery attempt " ^ var.nsew_attempt ^ "/" ^ var.nsew_max_attempts ^ ", depth=" ^ var.nsew_depth ^ "mm"}
     G53 G1 Z{var.rough_z + var.lift_z} F2000
-    G53 G1 X{var.center_x} Y{var.probe_y - var.spread} F{var.traverse_speed}
+    G53 G1 X{var.center_x} Y{var.probe_y - var.spread_y_minus} F{var.traverse_speed}
     G53 G1 Z{var.rough_z - var.nsew_depth} F600
     set var.sample_sum = 0
     set var.sample_count = 0
-    while var.sample_count < var.probe_samples
-        G38.2 K1 Y{var.probe_y + var.spread} F240
+    while var.sample_count < var.nsew_samples
+        G38.2 K1 Y{var.probe_y + var.spread_y_minus} F240
         if result >= 2
-            if abs(move.axes[1].userPosition - (var.probe_y - var.spread)) < abs(move.axes[1].userPosition - (var.probe_y + var.spread))
+            if abs(move.axes[1].userPosition - (var.probe_y - var.spread_y_minus)) < abs(move.axes[1].userPosition - (var.probe_y + var.spread_y_minus))
                 G53 G1 Z{var.safe_z} F6000
                 abort "Calibration aborted: T2 Y- touch failed (probe already triggered at start) - see console."
             M118 P0 S{"T2 Y- MISS attempt " ^ var.nsew_attempt ^ " depth " ^ var.nsew_depth ^ "mm"}
@@ -738,9 +750,9 @@ while var.nsew_miss && var.nsew_attempt <= var.nsew_max_attempts
         echo >>"0:/sys/zoff_nsew_log.csv" var.run_time ^ "," ^ "T2" ^ "," ^ "TY-" ^ "," ^ var.sample_reading ^ "," ^ var.nsew_attempt ^ "," ^ (var.sample_count + 1) ^ "," ^ var.nsew_depth ^ ",,,,,,"
         set var.sample_sum = var.sample_sum + var.sample_reading
         set var.sample_count = var.sample_count + 1
-        if var.sample_count < var.probe_samples
-            G53 G1 Y{move.axes[1].userPosition - var.nsew_retract} F{var.traverse_speed}
-            G53 G1 X{var.center_x} Y{var.probe_y - var.spread} F{var.traverse_speed}
+        if var.sample_count < var.nsew_samples
+            G53 G1 Y{move.axes[1].userPosition - var.retract_y_minus} F{var.retract_speed}
+            G53 G1 X{var.center_x} Y{var.probe_y - var.spread_y_minus} F{var.traverse_speed}
     if !var.nsew_miss
         set var.y_minus = var.sample_sum / var.sample_count
         M118 P0 S{"T2 Y- done: " ^ var.y_minus ^ " (" ^ var.sample_count ^ "x, depth " ^ var.nsew_depth ^ "mm)"}
@@ -759,7 +771,7 @@ G53 G1 X{var.center_x} Y{var.probe_y + var.spread} F{var.traverse_speed}
 G53 G1 Z{var.rough_z - var.nsew_depth} F600
 set var.sample_sum = 0
 set var.sample_count = 0
-while var.sample_count < var.probe_samples
+while var.sample_count < var.nsew_samples
     G38.2 K1 Y{var.probe_y - var.spread} F240
     if result >= 2
         if abs(move.axes[1].userPosition - (var.probe_y + var.spread)) < abs(move.axes[1].userPosition - (var.probe_y - var.spread))
@@ -772,8 +784,8 @@ while var.sample_count < var.probe_samples
     echo >>"0:/sys/zoff_nsew_log.csv" var.run_time ^ "," ^ "T2" ^ "," ^ "TY+" ^ "," ^ var.sample_reading ^ "," ^ 0 ^ "," ^ (var.sample_count + 1) ^ "," ^ var.nsew_depth ^ ",,,,,,"
     set var.sample_sum = var.sample_sum + var.sample_reading
     set var.sample_count = var.sample_count + 1
-    if var.sample_count < var.probe_samples
-        G53 G1 Y{move.axes[1].userPosition + var.nsew_retract} F{var.traverse_speed}
+    if var.sample_count < var.nsew_samples
+        G53 G1 Y{move.axes[1].userPosition + var.nsew_retract} F{var.retract_speed}
         G53 G1 X{var.center_x} Y{var.probe_y + var.spread} F{var.traverse_speed}
 if !var.nsew_miss
     set var.y_plus = var.sample_sum / var.sample_count
@@ -790,7 +802,7 @@ if var.nsew_miss
         G53 G1 Z{var.rough_z - var.nsew_depth} F600
         set var.sample_sum = 0
         set var.sample_count = 0
-        while var.sample_count < var.probe_samples
+        while var.sample_count < var.nsew_samples
             G38.2 K1 Y{var.probe_y - var.spread} F240
             if result >= 2
                 if abs(move.axes[1].userPosition - (var.probe_y + var.spread)) < abs(move.axes[1].userPosition - (var.probe_y - var.spread))
@@ -803,8 +815,8 @@ if var.nsew_miss
             echo >>"0:/sys/zoff_nsew_log.csv" var.run_time ^ "," ^ "T2" ^ "," ^ "TY+" ^ "," ^ var.sample_reading ^ "," ^ var.nsew_attempt ^ "," ^ (var.sample_count + 1) ^ "," ^ var.nsew_depth ^ ",,,,,,"
             set var.sample_sum = var.sample_sum + var.sample_reading
             set var.sample_count = var.sample_count + 1
-            if var.sample_count < var.probe_samples
-                G53 G1 Y{move.axes[1].userPosition + var.nsew_retract} F{var.traverse_speed}
+            if var.sample_count < var.nsew_samples
+                G53 G1 Y{move.axes[1].userPosition + var.nsew_retract} F{var.retract_speed}
                 G53 G1 X{var.center_x} Y{var.probe_y + var.spread} F{var.traverse_speed}
         if !var.nsew_miss
             set var.y_plus = var.sample_sum / var.sample_count
@@ -837,14 +849,23 @@ M118 P0 S{"T2 CENTER done: " ^ var.t2_z ^ " (" ^ var.sample_count ^ "x)"}
 
 G53 G1 Z{var.final_lift_z + var.t2_z} F2000
 
+; CSV column intentionally still logs the raw (t2_z - master_z) measurement,
+; not the sign-corrected value actually applied below - kept consistent
+; with historical log rows for repeatability comparison. See
+; sex-z-nipple.readme.md for the sign-fix rationale (2026-07-18).
 echo >>"0:/sys/zoff_nsew_log.csv" var.run_time ^ "," ^ "T2" ^ "," ^ "C,,,,," ^ var.center_x ^ "," ^ var.center_y ^ "," ^ var.t2_z ^ "," ^ (var.t2_z - var.master_z)
 
-G10 P2 Z{var.t2_z - var.master_z}
-M118 P0 S{"T2 Z-offset applied: " ^ (var.t2_z - var.master_z)}
+; G10 SUBTRACTS the stored offset from commanded Z (confirmed against the
+; real G10 docs, 2026-07-18) - so the correct value to store is
+; master_z - t2_z, NOT t2_z - master_z. Fixed 2026-07-18 after tracing a
+; real live crash (T2 dragging into the bed) to this exact sign inversion.
+G10 P2 Z{var.master_z - var.t2_z}
+M118 P0 S{"T2 Z-offset applied: " ^ (var.master_z - var.t2_z)}
 M118 P0 S{"Center X=" ^ var.center_x ^ " Y=" ^ var.center_y ^ " (ref only, X/Y=DuetToolAlign)"}
 
 ; ===== FINALIZE - M500 P10 specifically, not bare M500: bare M500 does NOT
 ; save tool offsets at all. See sex-z-nipple.readme.md "Key design decisions". =====
 G53 G1 Z{var.safe_z} F6000
+G53 G1 X150 Y150 F14400
 M500 P10
 M118 P0 S"N/S/E/W calibration complete. All offsets saved."
