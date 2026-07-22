@@ -8,6 +8,14 @@
 if !move.axes[0].homed || !move.axes[1].homed
 	abort "Error: X and Y axes must be homed before Quad Gantry Leveling."
 
+; 1b. Verify Z axis is homed - offer to home it and continue if not
+if !move.axes[2].homed
+	M291 P"Z axis is not homed. Home Z now and continue with QGL?" R"QGL - Z Not Homed" S4 K{"Home Z", "Cancel"}
+	if input == 0
+		M98 P"/macros/homez.g"
+	elif input == 1
+		abort "QGL cancelled by user."
+
 ; 2. Verify a tool is physically attached (-1 means the carriage is empty)
 if state.currentTool == -1
 	abort "Error: No tool attached! Cannot probe the bed for QGL."
